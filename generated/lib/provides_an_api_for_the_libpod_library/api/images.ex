@@ -602,6 +602,7 @@ defmodule ProvidesAnAPIForTheLibpodLibrary.Api.Images do
   @doc """
   Pull images
   Pull one or more images from a container registry.
+  Returns a stream of updates as the image is being pulled.
 
   ### Parameters
 
@@ -620,12 +621,11 @@ defmodule ProvidesAnAPIForTheLibpodLibrary.Api.Images do
 
   ### Returns
 
-  - `{:ok, ProvidesAnAPIForTheLibpodLibrary.Model.LibpodImagesPullReport.t}` on success
+  - `{:ok, stream}` on success, where stream yields `{:ok, LibpodImagesPullReport.t}` or `{:error, term}` for each line
   - `{:error, Tesla.Env.t}` on failure
   """
   @spec image_pull_libpod(Tesla.Env.client(), keyword()) ::
-          {:ok, ProvidesAnAPIForTheLibpodLibrary.Model.LibpodImagesPullReport.t()}
-          | {:ok, ProvidesAnAPIForTheLibpodLibrary.Model.SystemAuth500Response.t()}
+          {:ok, Enumerable.t()}
           | {:error, Tesla.Env.t()}
   def image_pull_libpod(connection, opts \\ []) do
     optional_params = %{
@@ -649,13 +649,74 @@ defmodule ProvidesAnAPIForTheLibpodLibrary.Api.Images do
       |> ensure_body()
       |> Enum.into([])
 
-    connection
-    |> Connection.request(request)
-    |> evaluate_response([
-      {200, ProvidesAnAPIForTheLibpodLibrary.Model.LibpodImagesPullReport},
-      {400, ProvidesAnAPIForTheLibpodLibrary.Model.SystemAuth500Response},
-      {500, ProvidesAnAPIForTheLibpodLibrary.Model.SystemAuth500Response}
-    ])
+    # Add adapter option to stream the response body for live updates
+    request_with_streaming = request ++ [opts: [adapter: [body_as: :stream]]]
+
+    case Connection.request(connection, request_with_streaming) do
+      {:ok, %Tesla.Env{status: status, body: body}} when status >= 200 and status < 300 ->
+        stream =
+          body
+          |> stream_lines()
+          |> Stream.map(fn line ->
+            case JSON.decode(line) do
+              {:ok, decoded} ->
+                {:ok, ProvidesAnAPIForTheLibpodLibrary.Model.LibpodImagesPullReport.decode(decoded)}
+
+              {:error, reason} ->
+                {:error, {:json_decode_error, reason, line}}
+            end
+          end)
+
+        {:ok, stream}
+
+      {:ok, %Tesla.Env{status: status} = env} when status >= 400 ->
+        {:error, env}
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  # Helper function to convert a stream of chunks into a stream of lines
+  defp stream_lines(body) when is_binary(body) do
+    # If body is already a binary (non-streaming adapter), split by newlines
+    body |> String.split("\n", trim: true)
+  end
+
+  defp stream_lines(body) do
+    # For streaming adapters, body is an enumerable of chunks
+    # We need to accumulate partial lines across chunks
+    Stream.transform(
+      body,
+      "",
+      fn
+        {:ok, chunk}, buffer ->
+          process_chunk(buffer <> chunk)
+
+        chunk, buffer when is_binary(chunk) ->
+          process_chunk(buffer <> chunk)
+
+        {:error, _} = error, _buffer ->
+          {[error], ""}
+      end,
+      fn
+        "" -> {[], ""}
+        buffer -> {[buffer], ""}
+      end
+    )
+  end
+
+  defp process_chunk(data) do
+    case String.split(data, "\n") do
+      [partial] ->
+        # No complete line yet, keep accumulating
+        {[], partial}
+
+      lines ->
+        # Last element might be partial (if data didn't end with \n)
+        {complete_lines, [rest]} = Enum.split(lines, -1)
+        {Enum.reject(complete_lines, &(&1 == "")), rest}
+    end
   end
 
   @doc """

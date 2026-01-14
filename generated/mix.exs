@@ -20,8 +20,10 @@ defmodule ProvidesAnAPIForTheLibpodLibrary.Mixfile do
   #
   # Type "mix help compile.app" for more information
   def application do
-    # Specify extra applications you'll use from Erlang/Elixir
-    [extra_applications: [:logger]]
+    [
+      extra_applications: [:logger],
+      mod: {ProvidesAnAPIForTheLibpodLibrary.Application, []}
+    ]
   end
 
   # Dependencies can be Hex packages:
@@ -36,6 +38,7 @@ defmodule ProvidesAnAPIForTheLibpodLibrary.Mixfile do
   defp deps do
     [
       {:tesla, "~> 1.14"},
+      {:finch, "~> 0.19"},
       {:ex_doc, "~> 0.37.3", only: :dev, runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]

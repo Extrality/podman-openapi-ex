@@ -9,6 +9,9 @@ import Config
 
 config :podman_openapi, base_url: "http://podman.io"
 
+# Configure Tesla to use Finch adapter for streaming support
+config :tesla, :adapter, {Tesla.Adapter.Finch, name: PodmanOpenAPI.Finch}
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 #

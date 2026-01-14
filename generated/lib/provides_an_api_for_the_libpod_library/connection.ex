@@ -9,12 +9,14 @@ defmodule ProvidesAnAPIForTheLibpodLibrary.Connection do
 
       config :tesla, ProvidesAnAPIForTheLibpodLibrary.Connection,
         base_url: "http://podman.io",
-        adapter: Tesla.Adapter.Hackney
+        adapter: {Tesla.Adapter.Finch, name: PodmanOpenAPI.Finch}
 
   The default base URL can also be set as:
 
       config :podman_openapi,
         :base_url, "http://podman.io"
+
+  This library uses Finch as the HTTP adapter for streaming support.
   """
 
   @default_base_url Application.compile_env(
@@ -93,10 +95,12 @@ defmodule ProvidesAnAPIForTheLibpodLibrary.Connection do
 
   @doc """
   Returns the default adapter for this API.
+
+  Defaults to Finch adapter for streaming support.
   """
   def adapter do
     :tesla
     |> Application.get_env(__MODULE__, [])
-    |> Keyword.get(:adapter, nil)
+    |> Keyword.get(:adapter, {Tesla.Adapter.Finch, name: PodmanOpenAPI.Finch})
   end
 end
